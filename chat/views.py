@@ -16,7 +16,7 @@ def chat_page(request):
 from asgiref.sync import sync_to_async
 
 @csrf_exempt
-async def send_message(request):
+def send_message(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -30,7 +30,6 @@ async def send_message(request):
                 'message': message
             })
             
-            await save_msg(message)
             
             # Publish message to the Redis channel for the receiver
             redis_instance.publish(f"chat_1", message_payload)
@@ -42,18 +41,37 @@ async def send_message(request):
 
 from django.http import StreamingHttpResponse
 from .models import ChatMessage
+import asyncio
 
 def stream_messages(request, channel):
     pubsub = redis_instance.pubsub()
     pubsub.subscribe("chat_1")
 
-    def event_stream():
+    async def event_stream():
         for message in pubsub.listen():
             if message['type'] == 'message':
+                await save_msg(message)
                 message_data = message['data'].decode('utf-8')
                 yield f"data: {message_data}\n\n"
+    
+
+    def sync_event_stream():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async_gen = event_stream()
+        
+        try:
+            while True:
+                message = loop.run_until_complete(async_gen.__anext__())
+                yield message
+        except StopAsyncIteration:
+            pass
+        finally:
+            loop.run_until_complete(async_gen.aclose())
+            loop.close()
                 
-    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response = StreamingHttpResponse(sync_event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     return response
 
