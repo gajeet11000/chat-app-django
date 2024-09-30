@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Application</title>
+</head>
+<body>
+    <h1>Chat Application</h1>
+
+    <div>
+        <input type="text" id="sender" placeholder="Your Username">
+        <input type="text" id="receiver" placeholder="Receiver Username">
+        <input type="text" id="message" placeholder="Enter your message">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <h2>Messages:</h2>
+    <div id="messages"></div>
+
+    <script>
+        // Function to send a message
+        function sendMessage() {
+            const sender = document.getElementById('sender').value;
+            const receiver = document.getElementById('receiver').value;
+            const message = document.getElementById('message').value;
+
+            fetch('/chat/send/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ sender, receiver, message })
+            }).then(response => {
+                return response.json();
+            }).then(data => {
+                console.log(data);
+            });
+        }
+
+        // Function to listen to incoming messages using SSE
+        function startSSE(channel) {
+            const eventSource = new EventSource(`/chat/stream/${channel}/`);
+
+            eventSource.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML += `<p><strong>${data.sender}:</strong> ${data.message}</p>`;
+            };
+
+            eventSource.onerror = function (event) {
+                console.error("SSE connection error:", event);
+                eventSource.close();
+            };
+        }
+
+        // Automatically start listening to the user's own channel
+        startSSE("something");
+    </script>
+</body>
+</html>
