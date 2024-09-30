@@ -47,28 +47,19 @@ def stream_messages(request, channel):
     pubsub = redis_instance.pubsub()
     pubsub.subscribe("chat_1")
 
-    async def event_stream():
-        for message in pubsub.listen():
-            if message['type'] == 'message':
-                await save_msg(message)
-                message_data = message['data'].decode('utf-8')
-                yield f"data: {message_data}\n\n"
-    
-
     def sync_event_stream():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        async_gen = event_stream()
-        
         try:
-            while True:
-                message = loop.run_until_complete(async_gen.__anext__())
-                yield message
-        except StopAsyncIteration:
-            pass
+            for message in pubsub.listen():
+                if message['type'] == 'message':
+                    message_data = message['data'].decode('utf-8')
+                    
+                    loop.run_until_complete(save_msg(message))
+                    
+                    yield f"data: {message_data}\n\n"
         finally:
-            loop.run_until_complete(async_gen.aclose())
             loop.close()
                 
     response = StreamingHttpResponse(sync_event_stream(), content_type='text/event-stream')
